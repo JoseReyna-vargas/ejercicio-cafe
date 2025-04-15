@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistema de Tickets</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body { padding-top: 60px; }
+    .ticket-card { margin-bottom: 15px; }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">🎫 Sistema de Tickets</a>
+      <span id="user-email" class="text-white me-3"></span>
+      <button class="btn btn-outline-light btn-sm" onclick="logout()">Cerrar sesión</button>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="container">
+    <!-- Login/Register -->
+    <div id="auth-section">
+      <h3 class="text-center">Acceso</h3>
+      <input type="email" id="email" class="form-control mb-2" placeholder="Email">
+      <input type="password" id="password" class="form-control mb-2" placeholder="Contraseña">
+      <div class="d-grid gap-2">
+        <button class="btn btn-primary" onclick="login()">Iniciar Sesión</button>
+        <button class="btn btn-secondary" onclick="register()">Registrarse</button>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display:none;">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4>Mis Tickets</h4>
+        <button class="btn btn-success" onclick="showTicketForm()"><i class="fas fa-plus"></i> Crear Ticket</button>
+      </div>
+      <div id="ticket-list" class="row"></div>
+    </div>
+
+    <!-- Ticket Form -->
+    <div id="ticket-form" style="display:none;">
+      <h4>Nuevo Ticket</h4>
+      <input type="text" id="ticket-title" class="form-control mb-2" placeholder="Título del pedido">
+      <textarea id="ticket-desc" class="form-control mb-2" placeholder="Descripción"></textarea>
+      <select id="ticket-priority" class="form-control mb-2">
+        <option value="Alta">Alta</option>
+        <option value="Media">Media</option>
+        <option value="Baja">Baja</option>
+      </select>
+      <input type="text" id="ticket-type" class="form-control mb-2" placeholder="Tipo de pedido">
+      <button class="btn btn-primary" onclick="submitTicket()">Guardar Ticket</button>
+      <button class="btn btn-secondary ms-2" onclick="hideTicketForm()">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBrzQeRpuCR98EObjHE3c9UDHNlnXMiU10",
+      authDomain: "ptickets-b2359.firebaseapp.com",
+      projectId: "ptickets-b2359",
+      storageBucket: "ptickets-b2359.firebasestorage.app",
+      messagingSenderId: "303640941515",
+      appId: "1:303640941515:web:48adeea878aef8c095dc4e"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth();
+    const db = getFirestore();
+
+    const authSection = document.getElementById("auth-section");
+    const dashboard = document.getElementById("dashboard");
+    const ticketForm = document.getElementById("ticket-form");
+
+    function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      signInWithEmailAndPassword(auth, email, password)
+        .then(() => Swal.fire("¡Bienvenido!", "", "success"))
+        .catch(e => Swal.fire("Error", e.message, "error"));
+    }
+
+    function register() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      createUserWithEmailAndPassword(auth, email, password)
+        .then(() => Swal.fire("Registrado correctamente", "", "success"))
+        .catch(e => Swal.fire("Error", e.message, "error"));
+    }
+
+    function logout() {
+      signOut(auth);
+    }
+
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        authSection.style.display = "none";
+        dashboard.style.display = "block";
+        document.getElementById("user-email").textContent = user.email;
+        loadTickets(user.uid);
+      } else {
+        authSection.style.display = "block";
+        dashboard.style.display = "none";
+        document.getElementById("user-email").textContent = "";
+      }
+    });
+
+    function showTicketForm() {
+      ticketForm.style.display = "block";
+      dashboard.style.display = "none";
+    }
+
+    function hideTicketForm() {
+      ticketForm.style.display = "none";
+      dashboard.style.display = "block";
+    }
+
+    async function submitTicket() {
+      const title = document.getElementById("ticket-title").value;
+      const desc = document.getElementById("ticket-desc").value;
+      const priority = document.getElementById("ticket-priority").value;
+      const type = document.getElementById("ticket-type").value;
+      const user = auth.currentUser;
+
+      if (!title || !desc || !priority || !type) {
+        return Swal.fire("Todos los campos son obligatorios", "", "warning");
+      }
+
+      try {
+        await addDoc(collection(db, "tickets"), {
+          uid: user.uid,
+          title, desc, priority, type,
+          date: new Date().toISOString()
+        });
+        Swal.fire("Ticket creado", "", "success");
+        hideTicketForm();
+        loadTickets(user.uid);
+      } catch (e) {
+        Swal.fire("Error", e.message, "error");
+      }
+    }
+
+    async function loadTickets(uid) {
+      const q = query(collection(db, "tickets"), where("uid", "==", uid));
+      const querySnapshot = await getDocs(q);
+      const list = document.getElementById("ticket-list");
+      list.innerHTML = "";
+      querySnapshot.forEach(doc => {
+        const d = doc.data();
+        const card = document.createElement("div");
+        card.className = "col-md-4 ticket-card";
+        card.innerHTML = `
+          <div class="card border-${getPriorityColor(d.priority)}">
+            <div class="card-body">
+              <h5 class="card-title">${d.title}</h5>
+              <p class="card-text">${d.desc}</p>
+              <span class="badge bg-${getPriorityColor(d.priority)}">${d.priority}</span>
+              <small class="text-muted d-block mt-2">${new Date(d.date).toLocaleString()}</small>
+            </div>
+          </div>`;
+        list.appendChild(card);
+      });
+    }
+
+    function getPriorityColor(priority) {
+      return priority === "Alta" ? "danger" : priority === "Media" ? "warning" : "secondary";
+    }
+  </script>
+</body>
+</html>
